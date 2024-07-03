@@ -3342,7 +3342,7 @@ LINK-TYPE will be \"brain\" by default."
               (cl-concatenate 'string
                               "file:"
                               (file-relative-name
-                               (buffer-file-name)
+                               (file-truename (buffer-file-name))
                                (file-name-directory (org-brain-entry-path choice)))
                               (if-let ((outline-path
                                         (and org-brain-backlink-heading
