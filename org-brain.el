@@ -730,12 +730,12 @@ visibility rendering/formatting in-buffer."
         (org-brain-replace-links-with-visible-parts (org-entry-get pom "ITEM"))
       (org-entry-get pom "ITEM"))))
 
-(defun org-brain--headline-entry-at-point (&optional create-id)
+(defun org-brain--headline-entry-at-point (&optional create-id target-buffer-file-name)
   "Get headline entry at point.
 If CREATE-ID is non-nil, call `org-brain-get-id' first."
   (if create-id (org-brain-get-id))
   (when-let ((id (org-entry-get (point) "ID")))
-    (list (org-brain-path-entry-name buffer-file-name)
+    (list (org-brain-path-entry-name (or buffer-file-name target-buffer-file-name))
           (org-brain-headline-at (point)) id)))
 
 (defun org-brain-entry-at-point-excludedp ()
@@ -838,40 +838,47 @@ If ENTRY is file, then the identifier is the relative file name."
 
 (defun org-brain-entry-at-pt (&optional create-id)
   "Get current org-brain entry.
-CREATE-ID asks to create an ID öif  there isn't  one already."
-  (cond ((eq major-mode 'org-mode)
-         (unless (string-prefix-p (file-truename org-brain-path)
-                                  (file-truename (buffer-file-name)))
-           (error "Not in a brain file"))
-         (if org-brain-scan-for-header-entries
-             (if (ignore-errors (org-get-heading))
-                 (or (org-brain--headline-entry-at-point)
-                     (when create-id
-                       (let ((closest-parent
-                              (save-excursion
-                                (let ((e))
-                                  (while (and (not e) (org-up-heading-safe))
-                                    (setq e (org-brain--headline-entry-at-point)))
-                                  (or e
-                                      (when org-brain-include-file-entries
-                                        (org-brain-path-entry-name (buffer-file-name))))))))
-                         (if (y-or-n-p
-                              (format "'%s' has no ID, create one%s? "
-                                      (org-brain-headline-at)
-                                      (if closest-parent
-                                          (format " [else use local parent '%s']"
-                                                  (org-brain-title closest-parent))
-                                        "")))
-                             (org-brain--headline-entry-at-point t)
-                           (or (org-brain-entry-at-pt) (error "No entry at pt"))))))
-               (if org-brain-include-file-entries
-                   (org-brain-path-entry-name (buffer-file-name))
-                 (error "Not under an org headline, and org-brain-include-file-entries is nil")))
-           (org-brain-path-entry-name (buffer-file-name))))
-        ((eq major-mode 'org-brain-visualize-mode)
-         org-brain--vis-entry)
-        (t
-         (error "Not in org-mode or org-brain-visualize"))))
+CREATE-ID asks to create an ID if there isn't one already."
+  (cond
+   ((eq major-mode 'org-mode)
+    (let ((target-buffer-file-name
+           (or buffer-file-name
+	       ;; Handle the org-capture buffer case when buffer-file-name is nil
+               (and (buffer-live-p (plist-get org-capture-plist :buffer))
+                    (with-current-buffer (plist-get org-capture-plist :buffer)
+                      buffer-file-name)))))
+      (unless (string-prefix-p (file-truename org-brain-path)
+                               (file-truename target-buffer-file-name))
+        (error "Not in a brain file"))
+      (if org-brain-scan-for-header-entries
+          (if (ignore-errors (org-get-heading))
+              (or (org-brain--headline-entry-at-point nil target-buffer-file-name)
+                  (when create-id
+                    (let ((closest-parent
+                           (save-excursion
+                             (let ((e))
+                               (while (and (not e) (org-up-heading-safe))
+                                 (setq e (org-brain--headline-entry-at-point nil target-buffer-file-name)))
+                               (or e
+                                   (when org-brain-include-file-entries
+                                     (org-brain-path-entry-name target-buffer-file-name)))))))
+                      (if (y-or-n-p
+                           (format "'%s' has no ID, create one%s? "
+                                   (org-brain-headline-at)
+                                   (if closest-parent
+                                       (format " [else use local parent '%s']"
+                                               (org-brain-title closest-parent))
+                                     "")))
+                          (org-brain--headline-entry-at-point t target-buffer-file-name)
+                        (or (org-brain-entry-at-pt) (error "No entry at pt"))))))
+            (if org-brain-include-file-entries
+                (org-brain-path-entry-name target-buffer-file-name)
+              (error "Not under an org headline, and org-brain-include-file-entries is nil")))
+        (org-brain-path-entry-name target-buffer-file-name))))
+   ((eq major-mode 'org-brain-visualize-mode)
+    org-brain--vis-entry)
+   (t
+    (error "Not in org-mode or org-brain-visualize"))))
 
 (defun org-brain-entry-name (entry)
   "Get name string of ENTRY."
