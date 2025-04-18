@@ -567,6 +567,15 @@ EDGE determines if `org-brain-edge-annotation-face-template' should be used."
 (defvar org-brain-headline-cache (make-hash-table :test 'equal)
   "Cache for headline entries. Updates when files have been saved.")
 
+(defun org-brain--get-target-buffer-file-name ()
+  "Return the target buffer file name, handling org-capture buffers as well."
+  (or buffer-file-name
+      ;; Handle the org-capture buffer case when buffer-file-name is nil
+      (and (boundp 'org-capture-plist)
+           (buffer-live-p (plist-get org-capture-plist :buffer))
+           (with-current-buffer (plist-get org-capture-plist :buffer)
+             buffer-file-name))))
+
 ;;;###autoload
 (defun org-brain-update-id-locations ()
   "Scan `org-brain-files' using `org-id-update-id-locations'."
@@ -578,7 +587,7 @@ EDGE determines if `org-brain-edge-annotation-face-template' should be used."
   "Get ID of headline at point, creating one if it doesn't exist.
 Run `org-brain-new-entry-hook' if a new ID is created, and update the cache."
   (interactive)
-  (let* ((file (abbreviate-file-name (file-truename (buffer-file-name))))
+  (let* ((file (abbreviate-file-name (file-truename (org-brain--get-target-buffer-file-name))))
          (id (or (org-id-get)
                  (progn
                    (run-hooks 'org-brain-new-entry-hook)
@@ -841,12 +850,7 @@ If ENTRY is file, then the identifier is the relative file name."
 CREATE-ID asks to create an ID if there isn't one already."
   (cond
    ((eq major-mode 'org-mode)
-    (let ((target-buffer-file-name
-           (or buffer-file-name
-	       ;; Handle the org-capture buffer case when buffer-file-name is nil
-               (and (buffer-live-p (plist-get org-capture-plist :buffer))
-                    (with-current-buffer (plist-get org-capture-plist :buffer)
-                      buffer-file-name)))))
+    (let ((target-buffer-file-name (org-brain--get-target-buffer-file-name)))
       (unless (string-prefix-p (file-truename org-brain-path)
                                (file-truename target-buffer-file-name))
         (error "Not in a brain file"))
